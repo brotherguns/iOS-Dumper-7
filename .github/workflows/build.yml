@@ -33,7 +33,7 @@ jobs:
             ARCHS="arm64" \
             DEAD_CODE_STRIPPING=NO \
             BUILD_DIR="$GITHUB_WORKSPACE/build" \
-            | xcpretty
+            2>&1
 
       - name: Upload Dumper.dylib
         uses: actions/upload-artifact@v4
