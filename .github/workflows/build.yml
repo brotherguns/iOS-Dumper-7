@@ -31,9 +31,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS="arm64" \
+            DEAD_CODE_STRIPPING=NO \
             BUILD_DIR="$GITHUB_WORKSPACE/build" \
-            OTHER_LDFLAGS="-v" \
-            2>&1
+            | xcpretty
 
       - name: Upload Dumper.dylib
         uses: actions/upload-artifact@v4
