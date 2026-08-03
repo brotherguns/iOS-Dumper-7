@@ -15,14 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache derived data
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-deriveddata-${{ hashFiles('Dumper.xcodeproj/project.pbxproj') }}
-          restore-keys: |
-            ${{ runner.os }}-deriveddata-
-
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
@@ -40,7 +32,8 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             ARCHS="arm64" \
             BUILD_DIR="$GITHUB_WORKSPACE/build" \
-            | xcpretty
+            OTHER_LDFLAGS="-v" \
+            2>&1
 
       - name: Upload Dumper.dylib
         uses: actions/upload-artifact@v4
