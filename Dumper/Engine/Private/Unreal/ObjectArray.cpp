@@ -227,7 +227,11 @@ void ObjectArray::InitializeChunkSize(uint8* ChunksPtr)
 void ObjectArray::Init(bool bScanAllMemory, const char* const ModuleName)
 {
     if (!bScanAllMemory)
-        LogInfo("\nDumper-7 by me, you & him\n\n\n");
+        LogInfo("
+Dumper-7 by me, you & him
+
+
+");
 
     const auto [ImageBase, ImageSize, Header, Slide] = GetImageBaseAndSize(ModuleName);
 
@@ -254,7 +258,9 @@ void ObjectArray::Init(bool bScanAllMemory, const char* const ModuleName)
     SearchRange -= 0x50;
 
     if (!bScanAllMemory)
-        LogInfo("Searching for GObjects...\n\n");
+        LogInfo("Searching for GObjects...
+
+");
 
     auto MatchesAnyLayout = []<typename ArrayLayoutType, size_t Size>(const std::array<ArrayLayoutType, Size>& ObjectArrayLayouts, uintptr Address)
     {
@@ -426,9 +432,16 @@ void ObjectArray::DumpObjects(const fs::path& Path, bool bWithPathname)
 	LogInfo("Dumping objects to %s...", (Path / "GObjects-Dump.txt").string().c_str());
 	std::ofstream DumpStream(Path / "GObjects-Dump.txt");
 
-	DumpStream << "Object dump by Dumper-7\n\n";
-	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "\n\n" : "");
-	DumpStream << "Count: " << Num() << "\n\n\n";
+	DumpStream << "Object dump by Dumper-7
+
+";
+	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "
+
+" : "");
+	DumpStream << "Count: " << Num() << "
+
+
+";
 
 	for (auto Object : ObjectArray())
 	{
@@ -437,11 +450,13 @@ void ObjectArray::DumpObjects(const fs::path& Path, bool bWithPathname)
         
 		if (!bWithPathname)
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}
+", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
 		}
 		else
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}
+", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
 		}
 	}
 
@@ -455,9 +470,16 @@ void ObjectArray::DumpObjectsWithProperties(const fs::path& Path, bool bWithPath
 	
 	std::ofstream DumpStream(Path / "GObjects-Dump-WithProperties.txt");
 
-	DumpStream << "Object dump by Dumper-7\n\n";
-	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "\n\n" : "");
-	DumpStream << "Count: " << Num() << "\n\n\n";
+	DumpStream << "Object dump by Dumper-7
+
+";
+	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "
+
+" : "");
+	DumpStream << "Count: " << Num() << "
+
+
+";
 
 	for (auto Object : ObjectArray())
 	{
@@ -465,18 +487,21 @@ void ObjectArray::DumpObjectsWithProperties(const fs::path& Path, bool bWithPath
             continue;
 		if (!bWithPathname)
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}
+", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
 		}
 		else
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}
+", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
 		}
 
 		if (Object.IsA(EClassCastFlags::Struct))
 		{
 			for (UEProperty Prop : Object.Cast<UEStruct>().GetProperties())
 			{
-				DumpStream << std::format("[{:08X}] {{{}}}\t{} {}\n", Prop.GetOffset(), Prop.GetAddress(), Prop.GetPropClassName(), Prop.GetName());
+				DumpStream << std::format("[{:08X}] {{{}}}	{} {}
+", Prop.GetOffset(), Prop.GetAddress(), Prop.GetPropClassName(), Prop.GetName());
 			}
 		}
 	}
@@ -632,76 +657,18 @@ int32 ObjectArray::ObjectsIterator::GetIndex() const
 *
 * See https://stackoverflow.com/questions/456713/why-do-i-get-unresolved-external-symbol-errors-when-using-templates
 */
-[[maybe_unused]] void TemplateTypeCreationForObjectArray(void)
-{
-	ObjectArray::FindObject<UEObject>("");
-	ObjectArray::FindObject<UEField>("");
-	ObjectArray::FindObject<UEEnum>("");
-	ObjectArray::FindObject<UEStruct>("");
-	ObjectArray::FindObject<UEClass>("");
-	ObjectArray::FindObject<UEFunction>("");
-	ObjectArray::FindObject<UEProperty>("");
-	ObjectArray::FindObject<UEByteProperty>("");
-	ObjectArray::FindObject<UEBoolProperty>("");
-	ObjectArray::FindObject<UEObjectProperty>("");
-	ObjectArray::FindObject<UEClassProperty>("");
-	ObjectArray::FindObject<UEStructProperty>("");
-	ObjectArray::FindObject<UEArrayProperty>("");
-	ObjectArray::FindObject<UEMapProperty>("");
-	ObjectArray::FindObject<UESetProperty>("");
-	ObjectArray::FindObject<UEEnumProperty>("");
+// Explicit template instantiations so clang Release builds emit all specializations.
+#define INST_UE_TYPES(F)     F(UEObject) F(UEField) F(UEEnum) F(UEStruct) F(UEClass)     F(UEFunction) F(UEProperty) F(UEByteProperty) F(UEBoolProperty)     F(UEObjectProperty) F(UEClassProperty) F(UEStructProperty)     F(UEArrayProperty) F(UEMapProperty) F(UESetProperty) F(UEEnumProperty)
 
-	ObjectArray::FindObjectFast<UEObject>("");
-	ObjectArray::FindObjectFast<UEField>("");
-	ObjectArray::FindObjectFast<UEEnum>("");
-	ObjectArray::FindObjectFast<UEStruct>("");
-	ObjectArray::FindObjectFast<UEClass>("");
-	ObjectArray::FindObjectFast<UEFunction>("");
-	ObjectArray::FindObjectFast<UEProperty>("");
-	ObjectArray::FindObjectFast<UEByteProperty>("");
-	ObjectArray::FindObjectFast<UEBoolProperty>("");
-	ObjectArray::FindObjectFast<UEObjectProperty>("");
-	ObjectArray::FindObjectFast<UEClassProperty>("");
-	ObjectArray::FindObjectFast<UEStructProperty>("");
-	ObjectArray::FindObjectFast<UEArrayProperty>("");
-	ObjectArray::FindObjectFast<UEMapProperty>("");
-	ObjectArray::FindObjectFast<UESetProperty>("");
-	ObjectArray::FindObjectFast<UEEnumProperty>("");
+#define INST_GET(T)          template T ObjectArray::GetByIndex<T>(int32);
+#define INST_FIND(T)         template T ObjectArray::FindObject<T>(const std::string&, EClassCastFlags);
+#define INST_FIND_FAST(T)    template T ObjectArray::FindObjectFast<T>(const std::string&, EClassCastFlags);
+#define INST_FIND_OUTER(T)   template T ObjectArray::FindObjectFastInOuter<T>(const std::string&, std::string);
 
-	ObjectArray::FindObjectFastInOuter<UEObject>("", "");
-	ObjectArray::FindObjectFastInOuter<UEField>("", "");
-	ObjectArray::FindObjectFastInOuter<UEEnum>("", "");
-	ObjectArray::FindObjectFastInOuter<UEStruct>("", "");
-	ObjectArray::FindObjectFastInOuter<UEClass>("", "");
-	ObjectArray::FindObjectFastInOuter<UEFunction>("", "");
-	ObjectArray::FindObjectFastInOuter<UEProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEByteProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEBoolProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEObjectProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEClassProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEStructProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEArrayProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEMapProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UESetProperty>("", "");
-	ObjectArray::FindObjectFastInOuter<UEEnumProperty>("", "");
-
-	ObjectArray::GetByIndex<UEObject>(-1);
-	ObjectArray::GetByIndex<UEField>(-1);
-	ObjectArray::GetByIndex<UEEnum>(-1);
-	ObjectArray::GetByIndex<UEStruct>(-1);
-	ObjectArray::GetByIndex<UEClass>(-1);
-	ObjectArray::GetByIndex<UEFunction>(-1);
-	ObjectArray::GetByIndex<UEProperty>(-1);
-	ObjectArray::GetByIndex<UEByteProperty>(-1);
-	ObjectArray::GetByIndex<UEBoolProperty>(-1);
-	ObjectArray::GetByIndex<UEObjectProperty>(-1);
-	ObjectArray::GetByIndex<UEClassProperty>(-1);
-	ObjectArray::GetByIndex<UEStructProperty>(-1);
-	ObjectArray::GetByIndex<UEArrayProperty>(-1);
-	ObjectArray::GetByIndex<UEMapProperty>(-1);
-	ObjectArray::GetByIndex<UESetProperty>(-1);
-	ObjectArray::GetByIndex<UEEnumProperty>(-1);
-}
+INST_UE_TYPES(INST_GET)
+INST_UE_TYPES(INST_FIND)
+INST_UE_TYPES(INST_FIND_FAST)
+INST_UE_TYPES(INST_FIND_OUTER)
 
 
 bool AllFieldIterator::operator!=(const AllFieldIterator& Other) const
