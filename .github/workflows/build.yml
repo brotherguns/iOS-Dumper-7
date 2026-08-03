@@ -1,0 +1,60 @@
+name: Build iOS-Dumper-7
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Clone iOS-Dumper-7
+        run: |
+          git clone --depth=1 https://github.com/Aethereux/iOS-Dumper-7.git repo
+
+      - name: Cache derived data
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('repo/Dumper.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build dylib (no signing)
+        working-directory: repo
+        run: |
+          xcodebuild \
+            -project Dumper.xcodeproj \
+            -scheme Dumper \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS="arm64" \
+            BUILD_DIR="$GITHUB_WORKSPACE/build" \
+            | xcpretty || true
+
+      - name: Locate built dylib
+        run: |
+          echo "=== Build output ==="
+          find "$GITHUB_WORKSPACE/build" -name "*.dylib" 2>/dev/null || \
+          find ~/Library/Developer/Xcode/DerivedData -name "*.dylib" 2>/dev/null | head -20
+
+      - name: Upload Dumper.dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dumper-dylib
+          path: |
+            ${{ github.workspace }}/build/**/*.dylib
+          if-no-files-found: warn
+          retention-days: 30
