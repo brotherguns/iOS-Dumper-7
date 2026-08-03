@@ -227,11 +227,7 @@ void ObjectArray::InitializeChunkSize(uint8* ChunksPtr)
 void ObjectArray::Init(bool bScanAllMemory, const char* const ModuleName)
 {
     if (!bScanAllMemory)
-        LogInfo("
-Dumper-7 by me, you & him
-
-
-");
+        LogInfo("\nDumper-7 by me, you & him\n\n\n");
 
     const auto [ImageBase, ImageSize, Header, Slide] = GetImageBaseAndSize(ModuleName);
 
@@ -258,9 +254,7 @@ Dumper-7 by me, you & him
     SearchRange -= 0x50;
 
     if (!bScanAllMemory)
-        LogInfo("Searching for GObjects...
-
-");
+        LogInfo("Searching for GObjects...\n\n");
 
     auto MatchesAnyLayout = []<typename ArrayLayoutType, size_t Size>(const std::array<ArrayLayoutType, Size>& ObjectArrayLayouts, uintptr Address)
     {
@@ -432,16 +426,9 @@ void ObjectArray::DumpObjects(const fs::path& Path, bool bWithPathname)
 	LogInfo("Dumping objects to %s...", (Path / "GObjects-Dump.txt").string().c_str());
 	std::ofstream DumpStream(Path / "GObjects-Dump.txt");
 
-	DumpStream << "Object dump by Dumper-7
-
-";
-	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "
-
-" : "");
-	DumpStream << "Count: " << Num() << "
-
-
-";
+	DumpStream << "Object dump by Dumper-7\n\n";
+	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "\n\n" : "");
+	DumpStream << "Count: " << Num() << "\n\n\n";
 
 	for (auto Object : ObjectArray())
 	{
@@ -450,13 +437,11 @@ void ObjectArray::DumpObjects(const fs::path& Path, bool bWithPathname)
         
 		if (!bWithPathname)
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}
-", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
 		}
 		else
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}
-", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
 		}
 	}
 
@@ -470,16 +455,9 @@ void ObjectArray::DumpObjectsWithProperties(const fs::path& Path, bool bWithPath
 	
 	std::ofstream DumpStream(Path / "GObjects-Dump-WithProperties.txt");
 
-	DumpStream << "Object dump by Dumper-7
-
-";
-	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "
-
-" : "");
-	DumpStream << "Count: " << Num() << "
-
-
-";
+	DumpStream << "Object dump by Dumper-7\n\n";
+	DumpStream << (!Settings::Generator::GameVersion.empty() && !Settings::Generator::GameName.empty() ? (Settings::Generator::GameVersion + '-' + Settings::Generator::GameName) + "\n\n" : "");
+	DumpStream << "Count: " << Num() << "\n\n\n";
 
 	for (auto Object : ObjectArray())
 	{
@@ -487,21 +465,18 @@ void ObjectArray::DumpObjectsWithProperties(const fs::path& Path, bool bWithPath
             continue;
 		if (!bWithPathname)
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}
-", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetFullName());
 		}
 		else
 		{
-			DumpStream << std::format("[{:08X}] {{{}}} {}
-", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
+			DumpStream << std::format("[{:08X}] {{{}}} {}\n", Object.GetIndex(), Object.GetAddress(), Object.GetPathName());
 		}
 
 		if (Object.IsA(EClassCastFlags::Struct))
 		{
 			for (UEProperty Prop : Object.Cast<UEStruct>().GetProperties())
 			{
-				DumpStream << std::format("[{:08X}] {{{}}}	{} {}
-", Prop.GetOffset(), Prop.GetAddress(), Prop.GetPropClassName(), Prop.GetName());
+				DumpStream << std::format("[{:08X}] {{{}}}	{} {}\n", Prop.GetOffset(), Prop.GetAddress(), Prop.GetPropClassName(), Prop.GetName());
 			}
 		}
 	}
