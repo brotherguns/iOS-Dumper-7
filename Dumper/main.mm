@@ -22,6 +22,8 @@ using namespace std::chrono_literals;
 
 void StartDump()
 {
+    InstallCrashLogger();
+
     std::this_thread::sleep_for(2s);
     
     Settings::Config::DelayDumperStart();
