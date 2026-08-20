@@ -54,41 +54,49 @@ static int32 FindOffsetByIDAPatterns(std::initializer_list<std::pair<const char*
 void Generator::InitEngineCore()
 {
 	LogInfo("Initializing Engine Core...");
-	ObjectArray::Init();
-	/* Per-game FName decryption hooks. Install BEFORE FName::Init.
-	 * Pick whichever match the target game; unused hooks default to identity.
-	 *
-	 *   (1) Raw FNameEntry-bytes transform — header itself is encrypted.
-	 *       Returns a (possibly scratch) entry pointer the reader uses instead.
-	 * InitNameEntryDecryption([](uint8_t* Entry) -> uint8_t* {
-	 *     // ... bytes-in / bytes-out ...
-	 *     return Entry;
-	 * });
-	 *
-	 *   (2) Output std::string transform — DeltaForce. Header is plaintext,
-	 *       chars are XOR'd. Runs at the tail of FNameEntry::GetString on the
-	 *       already-decoded std::string.
-	 * InitNameStringDecryption([](std::string Decoded) -> std::string {
-	 *     // ... XOR Decoded chars in-place, see DeltaForce example in ReadMe.md ...
-	 *     return Decoded;
-	 * });
-	 *
-	 *   (3) TNameEntryArray pointer chain — PUBG (UE 4.17, bIsNamePool == false):
-	 * InitNameArrayDecryption([](uintptr_t Start) -> uintptr_t {
-	 *     // ... pointer-chain walk, see PUBG example in ReadMe.md ...
-	 *     return Start;
-	 * });
-	 *
-	 *   (4) FNamePool pointer indirection — Valorant (UE 4.23+, bIsNamePool == true):
-	 * InitNamePoolDecryption([](uintptr_t Start) -> uintptr_t {
-	 *     // ... reassemble pointer from scattered bytes ...
-	 *     return Start;
-	 * });
-	 */
-	int32 GNamesOff = FindOffsetByIDAPatterns({
-		{"? ? ? ? 29 01 15 91 28 21 08 8B", 0}, // HOK: World
-	}, "GNames");
-	FName::Init(GNamesOff, FName::EOffsetOverrideType::GNames, true, "NGR");
+
+	// GL (com.tencent.ig) build — offsets from Dolphins.mm "ig" branch
+	ObjectArray::Init(
+		/*GObjectsOffset*/ 0x0A66BFE0,   // gWorldData 0x10A66BFE0 - 0x100000000
+		/*ElementsPerChunk*/ 0x10000,
+		FChunkedFixedUObjectArrayLayout{
+			.ObjectsOffset     = 0x00,
+			.MaxElementsOffset = 0x10,
+			.NumElementsOffset = 0x14,
+			.MaxChunksOffset   = 0x18,
+			.NumChunksOffset   = 0x1C,
+		}
+	);
+
+	InitNameArrayDecryption([](uintptr_t RawAddr) -> uintptr_t {
+		if (!RawAddr || IsBadReadPtr((void*)RawAddr) || IsBadReadPtr((void*)(RawAddr + 8)))
+			return 0;
+
+		const int32_t Header = *reinterpret_cast<int32_t*>(RawAddr);
+		if (Header < 100) return 0;
+
+		uint32_t Hops = (uint32_t)((Header - 100) / 3);
+		if (Hops == 0 || Hops > 16) return 0;
+
+		uint64_t Chain[16]{};
+		Chain[Hops - 1] = *reinterpret_cast<int64_t*>(RawAddr + 8);
+
+		while (Hops >= 2) {
+			const uintptr_t Next = Chain[Hops - 1];
+			if (!Next || IsBadReadPtr((void*)Next)) return 0;
+			Chain[Hops - 2] = *reinterpret_cast<int64_t*>(Next);
+			--Hops;
+		}
+		return Chain[0];
+	});
+
+	// gNameData 0x109FCAAA0 - 0x100000000
+	FName::Init(
+		/*GNamesOffset*/ 0x09FCAAA0,
+		FName::EOffsetOverrideType::GNames,
+		/*bIsNamePool*/ false
+	);
+
 	Off::Init();
 	PropertySizes::Init();
 	Off::InSDK::ProcessEvent::InitPE(); //Must be at this position, relies on offsets initialized in Off::Init()
