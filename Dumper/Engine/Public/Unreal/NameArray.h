@@ -141,6 +141,9 @@ public:
 	static int32 GetNumElements();
 	static int32 GetByteCursor();
 
+	/* True once TryInit successfully resolved GNames (NameArray or NamePool). */
+	static bool IsInitialized() { return GNames != nullptr; }
+
 	static FNameEntry GetNameEntry(const void* Name);
 	static FNameEntry GetNameEntry(int32 Idx);
 };

@@ -392,11 +392,52 @@ void ObjectArray::Init(int32 GObjectsOffset, const FFixedUObjectArrayLayout& Obj
 void ObjectArray::Init(int32 GObjectsOffset, int32 ElementsPerChunk, const FChunkedFixedUObjectArrayLayout& ObjectArrayLayout, const char* const ModuleName)
 {
 	LogInfo("Initializing ObjectArray with FChunkedFixedUObjectArray at offset 0x%X", GObjectsOffset);
-	GObjects = reinterpret_cast<uint8*>(GetModuleBase(ModuleName) + GObjectsOffset);
-	Off::InSDK::ObjArray::GObjects = GObjectsOffset;
+
+	const FChunkedFixedUObjectArrayLayout Layout = ObjectArrayLayout.IsValid() ? ObjectArrayLayout : FChunkedFixedUObjectArrayLayouts[0];
+	const uint64 ImageBase = GetModuleBase(ModuleName);
+	const uint8* ResolvedAddr = reinterpret_cast<uint8*>(ImageBase + GObjectsOffset);
+
+	/* Hardcoded offsets go stale across game builds. Validate before any unguarded
+	 * deref (older code crashed dereferencing a null Objects pointer when the
+	 * offset missed):
+	 *   Attempt 1 — ResolvedAddr IS the FUObjectArray instance.
+	 *   Attempt 2 — ResolvedAddr holds a pointer to the instance (indirect slot). */
+	uint8* PtrToArray = nullptr;
+
+	if (!IsBadReadPtr(ResolvedAddr) && !IsBadReadPtr(ResolvedAddr + 0x20) &&
+		IsAddressValidGObjects(reinterpret_cast<uintptr>(ResolvedAddr), Layout))
+	{
+		PtrToArray = const_cast<uint8*>(ResolvedAddr);
+		LogSuccess("Validated GObjects directly at 0x%p (raw slot: 0x%llX)", (void*)PtrToArray,
+				   (unsigned long long)SafeRead<uintptr>((uintptr)ResolvedAddr));
+	}
+	else
+	{
+		const uintptr Slot = IsBadReadPtr(ResolvedAddr) ? 0u : SafeRead<uintptr>((uintptr)ResolvedAddr);
+		if (Slot && !IsBadReadPtr(reinterpret_cast<uint8*>(Slot) + 0x20) &&
+			IsAddressValidGObjects(Slot, Layout))
+		{
+			PtrToArray = reinterpret_cast<uint8*>(Slot);
+			LogSuccess("Validated GObjects indirection 0x%p -> 0x%p", (void*)ResolvedAddr, (void*)PtrToArray);
+		}
+	}
+
+	if (!PtrToArray)
+	{
+		LogError("GObjects@0x%X (raw slot: 0x%llX) failed chunked-layout validation - falling back to auto-scan",
+				 GObjectsOffset,
+				 IsBadReadPtr(ResolvedAddr) ? 0ull : (unsigned long long)SafeRead<uintptr>((uintptr)ResolvedAddr));
+		GObjects = nullptr;
+		Off::InSDK::ObjArray::GObjects = 0x0;
+		Init(true);
+		return;
+	}
+
+	GObjects = PtrToArray;
+	Off::InSDK::ObjArray::GObjects = static_cast<int32>(reinterpret_cast<uintptr>(PtrToArray) - ImageBase);
 
 	Off::FUObjectArray::bIsChunked = true;
-	Off::FUObjectArray::ChunkedFixedLayout = ObjectArrayLayout.IsValid() ? ObjectArrayLayout : FChunkedFixedUObjectArrayLayouts[0];
+	Off::FUObjectArray::ChunkedFixedLayout = Layout;
 
 	NumElementsPerChunk = ElementsPerChunk;
 	Off::InSDK::ObjArray::ChunkSize = ElementsPerChunk;

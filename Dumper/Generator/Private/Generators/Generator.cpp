@@ -68,6 +68,12 @@ void Generator::InitEngineCore()
 		}
 	);
 
+	if (!ObjectArray::DEBUGGetGObjects())
+	{
+		LogError("GObjects could not be resolved (fixed offset stale + auto-scan miss). Aborting Engine Core init.");
+		return;
+	}
+
 	InitNameArrayDecryption([](uintptr_t RawAddr) -> uintptr_t {
 		if (!RawAddr || IsBadReadPtr((void*)RawAddr) || IsBadReadPtr((void*)(RawAddr + 8)))
 			return 0;
@@ -96,6 +102,12 @@ void Generator::InitEngineCore()
 		FName::EOffsetOverrideType::GNames,
 		/*bIsNamePool*/ false
 	);
+
+	if (!NameArray::IsInitialized())
+	{
+		LogError("Fixed GNames offset 0x09FCAAA0 failed - falling back to automatic FName detection");
+		FName::Init(false);
+	}
 
 	Off::Init();
 	PropertySizes::Init();
