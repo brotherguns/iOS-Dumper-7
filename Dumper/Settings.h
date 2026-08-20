@@ -16,8 +16,10 @@
  *   - the emitted SDK's `using TCHAR = ...;` alias,
  *   - the emitted STATIC_NAME_IMPL literal prefix (L"..." vs u"...").
  */
-#define UEVERSION 426
+#define UEVERSION 417
 
+inline std::string GameName = "PUBGMGL";
+inline std::string GameVersion = "3.6";
 #if UEVERSION >= 421
 
     #define TEXT(x) u##x
