@@ -105,7 +105,20 @@ void Generator::InitEngineCore()
 
 	if (!NameArray::IsInitialized())
 	{
-		LogError("Fixed GNames offset 0x09FCAAA0 failed - falling back to automatic FName detection");
+		// Fixed offset is stale for this game version (binary: com.tencent.ig 3.8.7) —
+		// scan writable data regions for the encrypted chain-head ourselves.
+		LogError("Fixed GNames offset 0x09FCAAA0 failed - scanning for encrypted chain-head");
+		const int32 FoundOff = NameArray::FindEncryptedGNamesOffset();
+		if (FoundOff != 0)
+		{
+			LogSuccess("Auto-located encrypted GNames chain-head at +0x%X - re-initializing", FoundOff);
+			FName::Init(FoundOff, FName::EOffsetOverrideType::GNames, /*bIsNamePool*/ false);
+		}
+	}
+
+	if (!NameArray::IsInitialized())
+	{
+		LogError("Encrypted chain-head scan failed - falling back to automatic FName detection");
 		FName::Init(false);
 	}
 

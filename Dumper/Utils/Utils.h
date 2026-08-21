@@ -185,7 +185,10 @@ inline MachImageInfo GetImageBaseAndSize(const char* ImageName = nullptr)
             intptr_t Slide = _dyld_get_image_vmaddr_slide(i);
             
             // Calculate real image size by iterating segments
-            uintptr_t MinAddr = ~0UL;
+            /* Segments below the image base (e.g. __PAGEZERO at vmaddr 0) must be
+             * excluded, otherwise ImageSize gets inflated to ~ImageBase + size and
+             * every [base, base+size) bound check accepts unmapped addresses. */
+            uintptr_t MinAddr = (uintptr_t)Header;
             uintptr_t MaxAddr = 0;
             auto* Cmd = (const struct load_command*)(Header + 1);
             
@@ -753,38 +756,63 @@ inline MemAddress FindUnrealExecFunctionByString(Type RefStr, void* StartAddress
 {
     const auto [ImageBase, ImageSize, Header, Slide] = GetImageBaseAndSize();
     uint8_t* SearchStart = StartAddress ? reinterpret_cast<uint8_t*>(StartAddress) : reinterpret_cast<uint8_t*>(ImageBase);
-    int32_t SearchRange = ImageSize;
+    const uint8_t* SearchEnd = reinterpret_cast<const uint8_t*>(ImageBase + ImageSize);
 
     const int32_t RefStrLen = StrlenHelper(RefStr);
 
-    static auto IsValidExecFunctionNotSetupFunc = [](uintptr_t Address) -> bool
+    auto IsValidExecFunctionNotSetupFunc = [](uintptr_t Address) -> bool
     {
-        if (!IsInProcessRange(Address)) return false;
-        return true;
+        return IsInProcessRange(Address);
     };
 
-    for (uintptr_t i = 0; i < (SearchRange - 0x8); i += sizeof(void*))
+    /* Walk this in readable VM regions so a scan that never matches cannot
+     * overrun into unmapped pages (seen as SIGBUS on PUBG GL 3.6). */
+    uint8_t* Curr = SearchStart;
+    while (Curr < SearchEnd)
     {
-        const uintptr_t PossibleStringAddress = *reinterpret_cast<uintptr_t*>(SearchStart + i);
-        const uintptr_t PossibleExecFuncAddress = *reinterpret_cast<uintptr_t*>(SearchStart + i + sizeof(void*));
+        vm_address_t VmAddr = (vm_address_t)Curr;
+        vm_size_t VmSize = 0;
+        vm_region_basic_info_data_64_t Info;
+        mach_msg_type_number_t Count = VM_REGION_BASIC_INFO_COUNT_64;
+        memory_object_name_t Obj;
+        kern_return_t Kr = vm_region_64(mach_task_self(), &VmAddr, &VmSize, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&Info, &Count, &Obj);
 
-        if (PossibleStringAddress == PossibleExecFuncAddress) continue;
-        if (!IsInProcessRange(PossibleStringAddress) || !IsInProcessRange(PossibleExecFuncAddress)) continue;
+        if (Kr != KERN_SUCCESS) break;
+        if (VmAddr > (vm_address_t)Curr) { Curr = (uint8_t*)VmAddr; continue; } // gap before this region
+        if (!(Info.protection & VM_PROT_READ) || VmSize == 0) { Curr += 0x4000; continue; }
 
-        if constexpr (std::is_same<Type, const char*>())
+        uint8_t* RegionEnd = reinterpret_cast<uint8_t*>(VmAddr + VmSize);
+        if (RegionEnd > const_cast<uint8_t*>(SearchEnd)) RegionEnd = const_cast<uint8_t*>(SearchEnd);
+
+        uintptr_t Ptr = (uintptr_t)Curr;
+        const uintptr_t RegionEndAddr = (uintptr_t)RegionEnd;
+        while (Ptr + sizeof(void*) <= RegionEndAddr)
         {
-            if (strncmp(reinterpret_cast<const char*>(RefStr), reinterpret_cast<const char*>(PossibleStringAddress), RefStrLen) == 0 && IsValidExecFunctionNotSetupFunc(PossibleExecFuncAddress))
+            const uintptr_t PossibleStringAddress = *reinterpret_cast<uintptr_t*>(Ptr);
+            const uintptr_t PossibleExecFuncAddress = *reinterpret_cast<uintptr_t*>(Ptr + sizeof(void*));
+
+            if (PossibleStringAddress == PossibleExecFuncAddress) { Ptr += sizeof(void*); continue; }
+            if (!IsInProcessRange(PossibleStringAddress) || !IsInProcessRange(PossibleExecFuncAddress)) { Ptr += sizeof(void*); continue; }
+
+            if constexpr (std::is_same<Type, const char*>())
             {
-                return { PossibleExecFuncAddress };
+                if (strncmp(reinterpret_cast<const char*>(RefStr), reinterpret_cast<const char*>(PossibleStringAddress), RefStrLen) == 0 && IsValidExecFunctionNotSetupFunc(PossibleExecFuncAddress))
+                {
+                    return { PossibleExecFuncAddress };
+                }
             }
-        }
-        else
-        {
-            if (wcsncmp(reinterpret_cast<const wchar_t*>(RefStr), reinterpret_cast<const wchar_t*>(PossibleStringAddress), RefStrLen) == 0 && IsValidExecFunctionNotSetupFunc(PossibleExecFuncAddress))
+            else
             {
-                return { PossibleExecFuncAddress };
+                if (wcsncmp(reinterpret_cast<const wchar_t*>(RefStr), reinterpret_cast<const wchar_t*>(PossibleStringAddress), RefStrLen) == 0 && IsValidExecFunctionNotSetupFunc(PossibleExecFuncAddress))
+                {
+                    return { PossibleExecFuncAddress };
+                }
             }
+
+            Ptr += sizeof(void*);
         }
+
+        Curr = RegionEnd;
     }
     return nullptr;
 }

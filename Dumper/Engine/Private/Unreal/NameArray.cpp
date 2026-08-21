@@ -662,6 +662,106 @@ bool NameArray::TryFindNamePool()
     return false;
 }
 
+/* Publg-style encrypted TNameEntryArray (bIsNamePool == false) auto-locator.
+ *
+ * The `GNamesOffset` global no longer points straight at the array; instead the
+ * slot holds `[int32 Header | uintptr_t FirstHop; ...]` and you must walk
+ * `Hops = (Header - 100) / 3` pointers to reach the live `TNameEntryArray**`.
+ * Same semantics as the InitNameArrayDecryption hook in InitEngineCore.
+ *
+ * We scan only the image's writable data regions (bulk-loaded, so no per-byte
+ * VM RPCs), validate every head by actually walking its chain and passing the
+ * result through InitializeNameArray, then store + return the raw offset.
+ * Returns 0 if no chain-head could be validated. */
+int32 NameArray::FindEncryptedGNamesOffset()
+{
+    const auto [ImageBase, ImageSize, Header, Slide] = GetImageBaseAndSize();
+
+    LogInfo("Scanning writable image data for PUBG chain-head TNameEntryArray...");
+
+    vm_address_t Addr = ImageBase;
+    const vm_address_t ImageEnd = ImageBase + ImageSize;
+    constexpr size_t ChunkSize = 0x400000; // 4 MB bulk reads
+    std::vector<uint8_t> Chunk(ChunkSize);
+
+    while (Addr < ImageEnd)
+    {
+        vm_address_t VmAddr = Addr;
+        vm_size_t VmSize = 0;
+        vm_region_basic_info_data_64_t Info;
+        mach_msg_type_number_t Count = VM_REGION_BASIC_INFO_COUNT_64;
+        memory_object_name_t Obj;
+        kern_return_t Kr = vm_region_64(mach_task_self(), &VmAddr, &VmSize, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&Info, &Count, &Obj);
+        if (Kr != KERN_SUCCESS) break;
+
+        if (!(Info.max_protection & VM_PROT_WRITE) || VmSize == 0)
+        {
+            Addr = std::min<vm_address_t>(ImageEnd, VmAddr + VmSize);
+            continue;
+        }
+
+        const uintptr_t ScanStart = std::max<uintptr_t>(Addr, (uintptr_t)VmAddr);
+        const uintptr_t ScanEnd = std::min<uintptr_t>(ImageEnd, (uintptr_t)VmAddr + VmSize);
+
+        size_t Off = 0;
+        while (ScanStart + Off + 4 <= ScanEnd)
+        {
+            const size_t ToRead = std::min<size_t>(ChunkSize, ScanEnd - (ScanStart + Off));
+            vm_size_t Actual = 0;
+            kern_return_t R = vm_read_overwrite(mach_task_self(), ScanStart + Off, ToRead, (vm_address_t)Chunk.data(), &Actual);
+            if (R != KERN_SUCCESS || Actual < 4) break;
+
+            for (size_t I = 0; I + 8 <= Actual; I += 4)
+            {
+                const int32 HeaderVal = *reinterpret_cast<const int32*>(Chunk.data() + I);
+                if (HeaderVal < 100) continue;
+                if ((HeaderVal - 100) % 3 != 0) continue;
+
+                const uint32 Hops = (uint32_t)((HeaderVal - 100) / 3);
+                if (Hops == 0 || Hops > 16) continue;
+
+                const uintptr RawAddr = ScanStart + Off + I;
+
+                /* First hop comes out of this chunk; the rest are real memory. */
+                uint64_t Chain[16]{};
+                Chain[Hops - 1] = SafeRead<uint64_t>(RawAddr + 8);
+                if (!Chain[Hops - 1] || IsBadReadPtr((void*)Chain[Hops - 1])) continue;
+
+                bool bFail = false;
+                uint32 H = Hops;
+                while (H >= 2)
+                {
+                    const uintptr Next = Chain[H - 1];
+                    if (!Next || IsBadReadPtr((void*)Next)) { bFail = true; break; }
+                    Chain[H - 2] = *reinterpret_cast<int64_t*>(Next);
+                    --H;
+                }
+                if (bFail) continue;
+
+                const uintptr ArrPtr = Chain[0];
+                if (!ArrPtr || IsBadReadPtr((void*)ArrPtr)) continue;
+                uint8* ArrayPtr = *reinterpret_cast<uint8**>(ArrPtr);
+                if (!ArrayPtr || IsBadReadPtr(ArrayPtr)) continue;
+
+                if (!NameArray::InitializeNameArray(ArrayPtr))
+                    continue;
+
+                const int32 FoundOff = (int32)(RawAddr - ImageBase);
+                Off::InSDK::NameArray::GNames = FoundOff;
+                LogSuccess("Found encrypted TNameEntryArray chain-head at +0x%X", FoundOff);
+                return FoundOff;
+            }
+
+            Off += Actual;
+        }
+
+        Addr = std::min<vm_address_t>(ImageEnd, VmAddr + VmSize);
+    }
+
+    LogError("No encrypted TNameEntryArray chain-head found");
+    return 0;
+}
+
 bool NameArray::TryInit(bool bIsTestOnly)
 {
     uintptr ImageBase = GetModuleBase();

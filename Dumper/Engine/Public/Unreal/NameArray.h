@@ -127,6 +127,12 @@ public:
 	static bool TryFindNameArray();
 	static bool TryFindNamePool();
 
+	/* PUBG-style encrypted TNameEntryArray auto-locator (bIsNamePool == false).
+	 * Scans writable image data for a valid `[int32 Header | FirstHop]` chain-head,
+	 * validates it by walking the hop chain, and returns the image-relative offset.
+	 * Returns 0 if no chain-head could be validated. */
+	static int32 FindEncryptedGNamesOffset();
+
 	static bool TryInit(bool bIsTestOnly = false);
 	static bool TryInit(int32 OffsetOverride, bool bIsNamePool, const char* const ModuleName = nullptr);
 
