@@ -54,78 +54,46 @@ static int32 FindOffsetByIDAPatterns(std::initializer_list<std::pair<const char*
 void Generator::InitEngineCore()
 {
 	LogInfo("Initializing Engine Core...");
-
-	// Fortnite (iOS) — UE 4.22, offsets from binary base (see FortniteData in Settings.h)
-
-	// FChunkedFixedUObjectArray (stock UE 4.21+ layout). The offset is validated
-	// at runtime before use; a stale offset falls back to auto-scan.
-	ObjectArray::Init(
-		/*GObjectsOffset*/ FortniteData::GObjects,
-		/*ElementsPerChunk*/ 0x10000,
-		FChunkedFixedUObjectArrayLayout{
-			.ObjectsOffset     = 0x00,
-			.MaxElementsOffset = 0x10,
-			.NumElementsOffset = 0x14,
-			.MaxChunksOffset   = 0x18,
-			.NumChunksOffset   = 0x1C,
-		}
-	);
-
-	if (!ObjectArray::DEBUGGetGObjects())
-	{
-		LogError("GObjects could not be resolved (fixed offset stale + auto-scan miss). Aborting Engine Core init.");
-		return;
-	}
-
-	// FNamePool (UE 4.23+ layout; Fortnite ships it even on 4.22).
-	FName::Init(
-		/*GNamesOffset*/ FortniteData::GNames,
-		FName::EOffsetOverrideType::GNames,
-		/*bIsNamePool*/ true
-	);
-
-	if (!NameArray::IsInitialized())
-	{
-		LogError("Fixed GNames offset 0x%X failed - falling back to automatic FName detection", FortniteData::GNames);
-		FName::Init(false);
-	}
-
+	ObjectArray::Init();
+	/* Per-game FName decryption hooks. Install BEFORE FName::Init.
+	 * Pick whichever match the target game; unused hooks default to identity.
+	 *
+	 *   (1) Raw FNameEntry-bytes transform — header itself is encrypted.
+	 *       Returns a (possibly scratch) entry pointer the reader uses instead.
+	 * InitNameEntryDecryption([](uint8_t* Entry) -> uint8_t* {
+	 *     // ... bytes-in / bytes-out ...
+	 *     return Entry;
+	 * });
+	 *
+	 *   (2) Output std::string transform — DeltaForce. Header is plaintext,
+	 *       chars are XOR'd. Runs at the tail of FNameEntry::GetString on the
+	 *       already-decoded std::string.
+	 * InitNameStringDecryption([](std::string Decoded) -> std::string {
+	 *     // ... XOR Decoded chars in-place, see DeltaForce example in ReadMe.md ...
+	 *     return Decoded;
+	 * });
+	 *
+	 *   (3) TNameEntryArray pointer chain — PUBG (UE 4.17, bIsNamePool == false):
+	 * InitNameArrayDecryption([](uintptr_t Start) -> uintptr_t {
+	 *     // ... pointer-chain walk, see PUBG example in ReadMe.md ...
+	 *     return Start;
+	 * });
+	 *
+	 *   (4) FNamePool pointer indirection — Valorant (UE 4.23+, bIsNamePool == true):
+	 * InitNamePoolDecryption([](uintptr_t Start) -> uintptr_t {
+	 *     // ... reassemble pointer from scattered bytes ...
+	 *     return Start;
+	 * });
+	 */
+	int32 GNamesOff = FindOffsetByIDAPatterns({
+		{"? ? ? ? 29 01 15 91 28 21 08 8B", 0}, // HOK: World
+	}, "GNames");
+	FName::Init(GNamesOff, FName::EOffsetOverrideType::GNames, true, "NGR");
 	Off::Init();
 	PropertySizes::Init();
+	Off::InSDK::ProcessEvent::InitPE(); //Must be at this position, relies on offsets initialized in Off::Init()
 
-	// ProcessEvent + vtable index, resolved from the fixed offset so the emitted
-	// SDK (and InitTextOffsets, which calls ProcessEvent) stays consistent.
-	{
-		void** VFT = *reinterpret_cast<void***>(ObjectArray::GetByIndex(0).GetAddress());
-		const uintptr_t ProcessEventAddr = GetModuleBase() + FortniteData::ProcessEvent;
-
-		int32 PEIdx = -1;
-		if (VFT && !IsBadReadPtr(VFT))
-		{
-			for (int32 i = 0; i < 0x400; ++i)
-			{
-				if (VFT[i] == reinterpret_cast<void*>(ProcessEventAddr)) { PEIdx = i; break; }
-			}
-		}
-
-		if (PEIdx >= 0)
-		{
-			// Sets both PEIndex and PEOffset (via Platform::GetOffset).
-			Off::InSDK::ProcessEvent::InitPE(PEIdx);
-		}
-		else
-		{
-			Off::InSDK::ProcessEvent::PEIndex  = -1;
-			Off::InSDK::ProcessEvent::PEOffset = static_cast<int32>(FortniteData::ProcessEvent);
-			LogError("ProcessEvent not found in UObject vtable - using fixed offset 0x%X (no vtable index)",
-					Off::InSDK::ProcessEvent::PEOffset);
-		}
-	}
-
-	// GWorld from FortniteData; InitGWorld() skips its scan when already set.
-	Off::InSDK::World::GWorld = static_cast<int32>(FortniteData::GWorld);
-	LogSuccess("InitGWorld: using fixed offset 0x%X", Off::InSDK::World::GWorld);
-	Off::InSDK::World::InitGWorld();
+	Off::InSDK::World::InitGWorld(); //Must be at this position, relies on offsets initialized in Off::Init()
 
 	Off::InSDK::Text::InitTextOffsets(); //Must be at this position, relies on offsets initialized in Off::InitPE()
 
@@ -431,17 +399,6 @@ void DumpUEOffsetsHeader(const fs::path& DumperFolder)
 	Out << "    constexpr uintptr_t ProcessEvent      = " << Addr(Off::InSDK::ProcessEvent::PEOffset) << ";\n";
 	Out << std::dec;
 	Out << "    constexpr int32_t  ProcessEventIndex = " << Off::InSDK::ProcessEvent::PEIndex << ";\n";
-	Out << "}\n";
-
-	/* Exported game-function offsets (from FortniteData in Settings.h) — handy
-	 * entry points for external tools / tweaks. */
-	Out << "namespace UEGameFuncs\n{\n";
-	Out << "    constexpr uintptr_t StaticLoadObject                  = " << Addr(FortniteData::StaticLoadObject) << ";\n";
-	Out << "    constexpr uintptr_t SpawnActorFTrans                  = " << Addr(FortniteData::SpawnActorFTrans) << ";\n";
-	Out << "    constexpr uintptr_t InitGameState                     = " << Addr(FortniteData::InitGameState) << ";\n";
-	Out << "    constexpr uintptr_t BeginPlay                          = " << Addr(FortniteData::BeginPlay) << ";\n";
-	Out << "    constexpr uintptr_t CallFunctionByNameWithArguments   = " << Addr(FortniteData::CallFunctionByNameWithArguments) << ";\n";
-	Out << "    constexpr uintptr_t ProcessEvent                      = " << Addr(FortniteData::ProcessEvent) << ";\n";
 	Out << "}\n";
 
 	Out.close();
