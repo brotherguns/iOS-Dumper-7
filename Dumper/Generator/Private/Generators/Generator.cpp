@@ -228,6 +228,7 @@ void DumpUEOffsetsHeader(const fs::path& DumperFolder)
 	Out << "    constexpr bool isUsingCasePreservingName = " << (Settings::Internal::bUseCasePreservingName ? "true" : "false") << ";\n";
 	Out << "    constexpr bool IsUsingFNamePool          = " << (Settings::Internal::bUseNamePool ? "true" : "false") << ";\n";
 	Out << "    constexpr bool isUsingOutlineNumberName  = " << (Settings::Internal::bUseOutlineNumberName ? "true" : "false") << ";\n";
+	Out << "    constexpr bool IsWideTCHAR               = " << (Settings::Internal::bIsWideTCHAR ? "true" : "false") << ";\n";
 	Out << "}\n\n";
 
 	Out << std::hex << std::showbase;

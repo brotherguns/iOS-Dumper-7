@@ -211,6 +211,10 @@ R"(
 
 		/* Whether this game uses uint8 for UEProperty::ArrayDim, instead of int32 */
 		inline bool bUseUint8ArrayDim = false;
+
+		/* Whether the game's TCHAR is 16-bit (char16_t, UE 4.21+) or 32-bit (wchar_t, UE <= 4.20).
+		 * Auto-detected at runtime by NameArray::InitializeNamePool / InitializeNameArray. */
+		inline bool bIsWideTCHAR = true;
 	}
 
 	extern void InitWeakObjectPtrSettings();

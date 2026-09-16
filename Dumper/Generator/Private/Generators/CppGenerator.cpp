@@ -15,21 +15,10 @@
 #include "Platform.h"
 
 #include "Menu/Logger.h"
-/*
- * SDK emit knobs that follow Settings.h's UEVERSION.
- *
- * UE  < 4.21 : FString chars are 32-bit on iOS  → emit `using TCHAR = wchar_t;`  + L"..." literals
- * UE >= 4.21 : FString chars are 16-bit         → emit `using TCHAR = char16_t;` + u"..." literals
- *
- * See memory: dumper7-ue-version-layout-comparison.md
- */
-#if UEVERSION >= 421
-    constexpr const char* SDKTCharAlias        = "using TCHAR = char16_t;";
-    constexpr const char  SDKWideLiteralPrefix = 'u';
-#else
-    constexpr const char* SDKTCharAlias        = "using TCHAR = wchar_t;";
-    constexpr const char  SDKWideLiteralPrefix = 'L';
-#endif
+/* SDK emit knobs. The TCHAR width is auto-detected at runtime via NameArray
+ * initialization (Settings::Internal::bIsWideTCHAR). */
+inline const char* SDKTCharAlias = Settings::Internal::bIsWideTCHAR ? "using TCHAR = char16_t;" : "using TCHAR = wchar_t;";
+inline const char  SDKWideLiteralPrefix = Settings::Internal::bIsWideTCHAR ? 'u' : 'L';
 
 constexpr std::string GetTypeFromSize(uint8 Size)
 {

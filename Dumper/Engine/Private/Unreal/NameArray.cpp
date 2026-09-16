@@ -110,8 +110,14 @@ void FNameEntry::Init(const uint8* FirstChunkPtr, int64 NameEntryStringOffset)
             // Wide-char path: no DecryptNameString applied. The hook signature is for
             // narrow byte XOR; wide encryption (no known shipping game does this) would
             // need UTF-16-aware math, not a byte-level hook.
-            if (HeaderWithoutNumber & NameWideMask)
-                return UnrealString(reinterpret_cast<const TCHAR*>(NameEntry + Off::FNameEntry::NamePool::StringOffset), NameLen);
+            if (HeaderWithoutNumber & NameWideMask) {
+                if (Settings::Internal::bIsWideTCHAR)
+                    return UnrealString(reinterpret_cast<const TCHAR*>(NameEntry + Off::FNameEntry::NamePool::StringOffset), NameLen);
+                else
+                    // Game uses 32-bit wchar_t; convert UTF-32 → UTF-16.
+                    return UtfN::Utf32StringToUtf16String(
+                        std::u32string(reinterpret_cast<const char32_t*>(NameEntry + Off::FNameEntry::NamePool::StringOffset), NameLen));
+            }
 
             /* Decrypt at the raw-bytes level BEFORE wide conversion. UTF-8 inflation
              * of XOR-encrypted bytes (e.g. DeltaForce: 0xB1 -> 2-byte UTF-8) would
@@ -174,8 +180,12 @@ void FNameEntry::Init(const uint8* FirstChunkPtr, int64 NameEntryStringOffset)
             // Wide-char path: no per-string decryption hook applied. The DecryptNameString
             // signature is for narrow byte XOR; wide encryption (if any future game does it)
             // would need UTF-16-aware math, not a byte-level hook.
-            if (NameIdx & NameWideMask)
-                return UnrealString(reinterpret_cast<const TCHAR*>(NameString));
+            if (NameIdx & NameWideMask) {
+                if (Settings::Internal::bIsWideTCHAR)
+                    return UnrealString(reinterpret_cast<const TCHAR*>(NameString));
+                else
+                    return UtfN::Utf32StringToUtf16String(std::u32string(reinterpret_cast<const wchar_t*>(NameString)));
+            }
 
             // Decrypt at the raw-bytes level BEFORE wide conversion. Legacy entries are
             // null-terminated, so length comes from strlen — encryption schemes whose output
@@ -229,9 +239,31 @@ bool NameArray::InitializeNameArray(uint8* NameArray)
                     return reinterpret_cast<void***>(NamesArray)[ChunkIdx][InChunk];
                 };
 
-                LogSuccess("TNameEntryArray initialized successfully");
-                return true;
-            }
+                 LogSuccess("TNameEntryArray initialized successfully");
+
+                 /* Auto-detect TCHAR width for TNameEntryArray path */
+                 {
+                     auto Entry = NameArray::GetNameEntry(1);
+                     if (Entry.GetAddress()) {
+                         const uint8* StrBytes = Entry.GetAddress() + Off::FNameEntry::NameArray::StringOffset;
+                         bool bLooksUTF32 = true;
+                         bool bLooksUTF16 = true;
+                         for (int i = 0; i < 8; ++i) {
+                             if (StrBytes[i] != 0) {
+                                 if (i % 4 == 1) { bLooksUTF32 = false; }
+                                 else if (i % 2 == 0) { bLooksUTF16 = false; }
+                                 else { bLooksUTF32 = false; bLooksUTF16 = false; }
+                             }
+                         }
+                         Settings::Internal::bIsWideTCHAR = bLooksUTF16 && !bLooksUTF32;
+                         if (!Settings::Internal::bIsWideTCHAR) {
+                             LogInfo("Detected 32-bit wchar_t TCHAR (UE <= 4.20) via NameArray");
+                         }
+                     }
+                 }
+
+                 return true;
+             }
         }
     }
 
@@ -487,12 +519,42 @@ bool NameArray::InitializeNamePool(uint8* NamePool)
         return (Chunk + ChunkOffset);
     };
 
-    Settings::Internal::bUseNamePool = true;
-    FNameEntry::Init(reinterpret_cast<uint8*>(ChunkPtr), FNameEntryHeaderSize);
+     Settings::Internal::bUseNamePool = true;
+     FNameEntry::Init(reinterpret_cast<uint8*>(ChunkPtr), FNameEntryHeaderSize);
 
-    LogSuccess("FNamePool initialized successfully");
-    return true;
-}
+     /* Auto-detect TCHAR width: read the first named entry and check if
+      * the string bytes are UTF-16LE (char16_t, UE 4.21+) or UTF-32LE (wchar_t, UE <= 4.20). */
+     {
+         auto Entry = NameArray::GetNameEntry(1);
+         if (Entry.GetAddress()) {
+             const uint8* StrBytes = nullptr;
+             if (Settings::Internal::bUseNamePool) {
+                 StrBytes = Entry.GetAddress() + Off::FNameEntry::NamePool::StringOffset;
+             } else {
+                 StrBytes = Entry.GetAddress() + Off::FNameEntry::NameArray::StringOffset;
+             }
+             /* Heuristic: scan the first few bytes. UTF-32LE has a null byte after
+              * every ASCII char; UTF-16LE has a null byte every other char. */
+             bool bLooksUTF32 = true;
+             bool bLooksUTF16 = true;
+             for (int i = 0; i < 8; ++i) {
+                 if (StrBytes[i] != 0) {
+                     if (i % 4 == 0) { /* first char of a group */ }
+                     else if (i % 4 == 1) { bLooksUTF32 = false; }
+                     else if (i % 2 == 0) { bLooksUTF16 = false; }
+                     else { bLooksUTF32 = false; bLooksUTF16 = false; }
+                 }
+             }
+             Settings::Internal::bIsWideTCHAR = bLooksUTF16 && !bLooksUTF32;
+             if (!Settings::Internal::bIsWideTCHAR) {
+                 LogInfo("Detected 32-bit wchar_t TCHAR (UE <= 4.20)");
+             }
+         }
+     }
+
+     LogSuccess("FNamePool initialized successfully");
+     return true;
+ }
 
 /* * Finds a call to FName::GetNames, OR a reference to GNames directly.
  * * [iOS Port Note]: The original x64 instruction parsing logic has been replaced with
