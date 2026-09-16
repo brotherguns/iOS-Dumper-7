@@ -6,6 +6,7 @@
 #include "Managers/DependencyManager.h"
 #include "Managers/MemberManager.h"
 #include "HashStringTable.h"
+#include "ProfileGen.h"
 
 
 namespace fs = std::filesystem;
@@ -82,6 +83,7 @@ public:
             }
 
             DumpUEOffsetsHeader(DumperFolder);
+            ProfileGen::Generate(DumperFolder);
         }
 
         if (!SetupFolders(GeneratorType::MainFolderName, GeneratorType::MainFolder, GeneratorType::SubfolderName, GeneratorType::Subfolder))

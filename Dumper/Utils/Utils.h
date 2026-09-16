@@ -834,3 +834,172 @@ namespace FileNameHelper_IOSRemoved
         }
     }
 }
+
+// ARM64 String Reference Scanning
+// Scans for ADRP+LDR instruction pairs that reference a specific ASCII string.
+// Based on the UE4-Function-Address-Finder pattern, adapted for ARM64.
+
+inline uintptr_t ScanForStringRef(const uint8_t* RegionStart, size_t RegionSize, const char* String, uintptr_t RegionBase)
+{
+    if (!String || !RegionStart || RegionSize == 0) return 0;
+
+    size_t StrLen = strlen(String);
+    if (StrLen == 0) return 0;
+
+    // Find the string bytes in the region
+    const uint8_t* FoundPtr = (const uint8_t*)FindPatternInRange(String, StrLen, RegionStart, RegionSize);
+    if (!FoundPtr) return 0;
+    uintptr_t StringAddr = (uintptr_t)FoundPtr;
+
+    // Scan backward from the string to find the ADRP+LDR pair that references it
+    const uintptr_t SearchStart = StringAddr > 0x1000 ? StringAddr - 0x1000 : (uintptr_t)RegionStart;
+
+    for (uintptr_t Addr = SearchStart; Addr < StringAddr; Addr += 4)
+    {
+        if (!IsValidVirtualAddress(Addr)) continue;
+
+        uint32_t instr = *reinterpret_cast<uint32_t*>(Addr);
+
+        // Check for ADRP (0x90xxxxxx)
+        if ((instr & 0x9F000000) == 0x90000000)
+        {
+            // Check if the next instruction is a 64-bit LDR immediate (0xF94)
+            if (Addr + 4 < StringAddr && IsValidVirtualAddress(Addr + 4))
+            {
+                uint32_t ldr = *reinterpret_cast<uint32_t*>(Addr + 4);
+                if ((ldr & 0xFFC00000) == 0xF9400000)
+                {
+                    // Verify this ADRP+LDR pair resolves to the string address
+                    uintptr_t resolved = ASMUtils::ResolveADRP_LDR(Addr);
+                    if (resolved == StringAddr)
+                        return Addr;
+
+                    // Also check if the dereferenced pointer matches the string address
+                    if (resolved != 0 && IsValidVirtualAddress(resolved))
+                    {
+                        uintptr_t deref = SafeRead<uintptr_t>(resolved, 0);
+                        if (deref == StringAddr)
+                            return Addr;
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+inline uintptr_t FindStringRef(const char* String, const char* SegmentName = "__TEXT")
+{
+    if (!String || !*String) return 0;
+
+    const auto [ImageBase, ImageSize, Header, Slide] = GetImageBaseAndSize();
+    if (!ImageBase || !ImageSize) return 0;
+
+    const auto [SegStart, SegSize] = GetSegmentByName(Header, SegmentName);
+    if (!SegStart || !SegSize) return 0;
+
+    return ScanForStringRef((const uint8_t*)SegStart, SegSize, String, SegStart);
+}
+
+namespace ASMUtils
+{
+    // ARM64 branch resolution: returns target address if B/BL/B.cond, AddrIn unchanged otherwise
+    inline uintptr_t CheckNSkipJumpARM64(uintptr_t AddrIn)
+    {
+        uint32_t instr = SafeRead<uint32_t>(AddrIn, 0);
+        if (instr == 0) return AddrIn;
+
+        // ret instruction - end of chain marker
+        if (instr == 0xD65F03C0)
+            return AddrIn;
+
+        // B (0x14000000 + 26-bit offset) or BL (0x94000000 + 26-bit offset)
+        if ((instr & 0xFC000000) == 0x14000000 || (instr & 0xFC000000) == 0x94000000)
+        {
+            int32_t imm26 = instr & 0x03FFFFFF;
+            int64_t offset = (int64_t)(imm26 << 6) >> 4;
+            return AddrIn + offset;
+        }
+
+        // B.cond (0x54000000 + 19-bit offset)
+        if ((instr & 0xFC000000) == 0x54000000)
+        {
+            uint32_t imm19 = (instr >> 5) & 0x7FFFF;
+            int64_t offset = ((int64_t)(imm19 << 13) >> 13) << 2;
+            return AddrIn + offset;
+        }
+
+        return AddrIn;
+    }
+
+    // Follow a chain of ARM64 branch instructions
+    inline uintptr_t FollowBranchChain(uintptr_t StartAddr, int MaxDepth = 5)
+    {
+        uintptr_t current = StartAddr;
+        for (int i = 0; i < MaxDepth; i++)
+        {
+            uint32_t instr = SafeRead<uint32_t>(current, 0);
+            if (instr == 0xD65F03C0) // ret instruction
+                break;
+            uintptr_t next = CheckNSkipJumpARM64(current);
+            if (next == current) // not a branch
+                break;
+            current = next;
+        }
+        return current;
+    }
+}
+
+// KMP substring search with wildcard support (-1 matches any byte)
+inline std::vector<int> getPartialMatchTable(const std::vector<int>& pattern)
+{
+    int patternSize = (int)pattern.size();
+    std::vector<int> partialMatchTable(patternSize, 0);
+
+    int j = 0;
+    for (int i = 1; i < patternSize; i++)
+    {
+        while (j > 0 && (pattern[j] != pattern[i] && pattern[j] != -1))
+        {
+            j = partialMatchTable[j - 1];
+        }
+        if (pattern[j] == pattern[i] || pattern[j] == -1)
+        {
+            j++;
+        }
+        partialMatchTable[i] = j;
+    }
+
+    return partialMatchTable;
+}
+
+inline int KMPSearch(const std::vector<uint8_t>& haystack, const std::vector<int>& pattern)
+{
+    int arraySize = (int)haystack.size();
+    int patternSize = (int)pattern.size();
+    if (patternSize == 0) return 0;
+    if (arraySize < patternSize) return -1;
+
+    std::vector<int> partialMatchTable = getPartialMatchTable(pattern);
+
+    int j = 0;
+    for (int i = 0; i < arraySize; i++)
+    {
+        while (j > 0 && (pattern[j] != haystack[i] && pattern[j] != -1))
+        {
+            i = i - j + 1;
+            j = partialMatchTable[j - 1];
+        }
+        if (pattern[j] == haystack[i] || pattern[j] == -1)
+        {
+            j++;
+        }
+        if (j == patternSize)
+        {
+            return i - patternSize + 1;
+        }
+    }
+
+    return -1;
+}
