@@ -164,6 +164,53 @@ namespace ASMUtils
 
         return addResult;
     }
+
+    // ARM64 branch resolution: returns target address if B/BL/B.cond, AddrIn unchanged otherwise
+    inline uintptr_t CheckNSkipJumpARM64(uintptr_t AddrIn)
+    {
+        uint32_t instr = SafeRead<uint32_t>(AddrIn, 0);
+        if (instr == 0) return AddrIn;
+
+        // ret instruction - end of chain marker
+        if (instr == 0xD65F03C0)
+            return AddrIn;
+
+        // B (0x14000000 + 26-bit offset) or BL (0x94000000 + 26-bit offset)
+        if ((instr & 0xFC000000) == 0x14000000 || (instr & 0xFC000000) == 0x94000000)
+        {
+            int32_t imm26 = instr & 0x03FFFFFF;
+            int64_t offset = (int64_t)(imm26 << 6) >> 4;
+            return AddrIn + offset;
+        }
+
+        // B.cond (0x54000000 + 19-bit offset)
+        if ((instr & 0xFC000000) == 0x54000000)
+        {
+            uint32_t imm19 = (instr >> 5) & 0x7FFFF;
+            int64_t offset = ((int64_t)(imm19 << 13) >> 13) << 2;
+            return AddrIn + offset;
+        }
+
+        return AddrIn;
+    }
+
+    // Follow a chain of ARM64 branch instructions
+    inline uintptr_t FollowBranchChain(uintptr_t StartAddr, int MaxDepth = 5)
+    {
+        uintptr_t current = StartAddr;
+        for (int i = 0; i < MaxDepth; i++)
+        {
+            uint32_t instr = SafeRead<uint32_t>(current, 0);
+            if (instr == 0xD65F03C0) // ret instruction
+                break;
+            uintptr_t next = CheckNSkipJumpARM64(current);
+            if (next == current) // not a branch
+                break;
+            current = next;
+        }
+        return current;
+    }
+
 }
 
 struct MachImageInfo {
@@ -902,54 +949,6 @@ inline uintptr_t FindStringRef(const char* String, const char* SegmentName = "__
     return ScanForStringRef((const uint8_t*)SegStart, SegSize, String, SegStart);
 }
 
-namespace ASMUtils
-{
-    // ARM64 branch resolution: returns target address if B/BL/B.cond, AddrIn unchanged otherwise
-    inline uintptr_t CheckNSkipJumpARM64(uintptr_t AddrIn)
-    {
-        uint32_t instr = SafeRead<uint32_t>(AddrIn, 0);
-        if (instr == 0) return AddrIn;
-
-        // ret instruction - end of chain marker
-        if (instr == 0xD65F03C0)
-            return AddrIn;
-
-        // B (0x14000000 + 26-bit offset) or BL (0x94000000 + 26-bit offset)
-        if ((instr & 0xFC000000) == 0x14000000 || (instr & 0xFC000000) == 0x94000000)
-        {
-            int32_t imm26 = instr & 0x03FFFFFF;
-            int64_t offset = (int64_t)(imm26 << 6) >> 4;
-            return AddrIn + offset;
-        }
-
-        // B.cond (0x54000000 + 19-bit offset)
-        if ((instr & 0xFC000000) == 0x54000000)
-        {
-            uint32_t imm19 = (instr >> 5) & 0x7FFFF;
-            int64_t offset = ((int64_t)(imm19 << 13) >> 13) << 2;
-            return AddrIn + offset;
-        }
-
-        return AddrIn;
-    }
-
-    // Follow a chain of ARM64 branch instructions
-    inline uintptr_t FollowBranchChain(uintptr_t StartAddr, int MaxDepth = 5)
-    {
-        uintptr_t current = StartAddr;
-        for (int i = 0; i < MaxDepth; i++)
-        {
-            uint32_t instr = SafeRead<uint32_t>(current, 0);
-            if (instr == 0xD65F03C0) // ret instruction
-                break;
-            uintptr_t next = CheckNSkipJumpARM64(current);
-            if (next == current) // not a branch
-                break;
-            current = next;
-        }
-        return current;
-    }
-}
 
 // KMP substring search with wildcard support (-1 matches any byte)
 inline std::vector<int> getPartialMatchTable(const std::vector<int>& pattern)
