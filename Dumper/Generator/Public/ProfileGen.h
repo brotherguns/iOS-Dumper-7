@@ -21,7 +21,7 @@ private:
 public:
     struct Profile
     {
-        int32_t UEVERSION = 0;
+        int32_t UEVersion = 0;
         bool UseFNamePool = false;
         bool IsUsingFChunkedFixedUObjectArray = false;
         uintptr_t GNamesOffset = 0;
@@ -48,9 +48,10 @@ public:
         return GetInstance().m_Profile;
     }
 
-    void Generate(const fs::path& DumperFolder)
+    static void Generate(const fs::path& DumperFolder)
     {
-        PopulateProfile();
+        ProfileGen& Instance = GetInstance();
+        Instance.PopulateProfile();
 
         const fs::path OutPath = DumperFolder / "DumpName.profile";
         std::ofstream Out(OutPath);
@@ -60,24 +61,22 @@ public:
             return;
         }
 
-        const uintptr_t ImageBase = GetModuleBase();
-
         Out << "{\n";
-        Out << "    \"UEVERSION\": " << m_Profile.UEVERSION << ",\n";
-        Out << "    \"UseFNamePool\": " << (m_Profile.UseFNamePool ? "true" : "false") << ",\n";
-        Out << "    \"IsUsingFChunkedFixedUObjectArray\": " << (m_Profile.IsUsingFChunkedFixedUObjectArray ? "true" : "false") << ",\n";
-        Out << "    \"GNamesOffset\": \"0x" << std::hex << std::showbase << m_Profile.GNamesOffset << "\",\n";
-        Out << "    \"GObjectsOffset\": \"0x" << std::hex << std::showbase << m_Profile.GObjectsOffset << "\",\n";
-        Out << "    \"GWorldOffset\": \"0x" << std::hex << std::showbase << m_Profile.GWorldOffset << "\",\n";
-        Out << "    \"ProcessEventOffset\": \"0x" << std::hex << std::showbase << m_Profile.ProcessEventOffset << "\",\n";
-        Out << "    \"StaticLoadObjectOffset\": \"0x" << std::hex << std::showbase << m_Profile.StaticLoadObjectOffset << "\",\n";
-        Out << "    \"SpawnActorFTransOffset\": \"0x" << std::hex << std::showbase << m_Profile.SpawnActorFTransOffset << "\",\n";
-        Out << "    \"InitGameStateOffset\": \"0x" << std::hex << std::showbase << m_Profile.InitGameStateOffset << "\",\n";
-        Out << "    \"BeginPlayOffset\": \"0x" << std::hex << std::showbase << m_Profile.BeginPlayOffset << "\",\n";
-        Out << "    \"CallFunctionByNameWithArgumentsOffset\": \"0x" << std::hex << std::showbase << m_Profile.CallFunctionByNameWithArgumentsOffset << "\",\n";
+        Out << "    \"UEVERSION\": " << Instance.m_Profile.UEVersion << ",\n";
+        Out << "    \"UseFNamePool\": " << (Instance.m_Profile.UseFNamePool ? "true" : "false") << ",\n";
+        Out << "    \"IsUsingFChunkedFixedUObjectArray\": " << (Instance.m_Profile.IsUsingFChunkedFixedUObjectArray ? "true" : "false") << ",\n";
+        Out << "    \"GNamesOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.GNamesOffset << "\",\n";
+        Out << "    \"GObjectsOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.GObjectsOffset << "\",\n";
+        Out << "    \"GWorldOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.GWorldOffset << "\",\n";
+        Out << "    \"ProcessEventOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.ProcessEventOffset << "\",\n";
+        Out << "    \"StaticLoadObjectOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.StaticLoadObjectOffset << "\",\n";
+        Out << "    \"SpawnActorFTransOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.SpawnActorFTransOffset << "\",\n";
+        Out << "    \"InitGameStateOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.InitGameStateOffset << "\",\n";
+        Out << "    \"BeginPlayOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.BeginPlayOffset << "\",\n";
+        Out << "    \"CallFunctionByNameWithArgumentsOffset\": \"0x" << std::hex << std::showbase << Instance.m_Profile.CallFunctionByNameWithArgumentsOffset << "\",\n";
         Out << std::dec;
-        Out << "    \"GameName\": \"" << m_Profile.GameName << "\",\n";
-        Out << "    \"GameVersion\": \"" << m_Profile.GameVersion << "\"\n";
+        Out << "    \"GameName\": \"" << Instance.m_Profile.GameName << "\",\n";
+        Out << "    \"GameVersion\": \"" << Instance.m_Profile.GameVersion << "\"\n";
         Out << "}\n";
 
         Out.close();
@@ -91,7 +90,7 @@ private:
     {
         const uintptr_t ImageBase = GetModuleBase();
 
-        m_Profile.UEVERSION = UEVERSION;
+        m_Profile.UEVersion = UEVERSION;
         m_Profile.UseFNamePool = Settings::Internal::bUseNamePool;
         m_Profile.IsUsingFChunkedFixedUObjectArray = Off::FUObjectArray::bIsChunked;
         m_Profile.GNamesOffset = ImageBase + Off::InSDK::NameArray::GNames;

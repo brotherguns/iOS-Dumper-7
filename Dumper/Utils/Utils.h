@@ -168,7 +168,7 @@ namespace ASMUtils
     // ARM64 branch resolution: returns target address if B/BL/B.cond, AddrIn unchanged otherwise
     inline uintptr_t CheckNSkipJumpARM64(uintptr_t AddrIn)
     {
-        uint32_t instr = SafeRead<uint32_t>(AddrIn, 0);
+        uint32_t instr = *reinterpret_cast<uint32_t*>(AddrIn);
         if (instr == 0) return AddrIn;
 
         // ret instruction - end of chain marker
@@ -200,7 +200,7 @@ namespace ASMUtils
         uintptr_t current = StartAddr;
         for (int i = 0; i < MaxDepth; i++)
         {
-            uint32_t instr = SafeRead<uint32_t>(current, 0);
+            uint32_t instr = *reinterpret_cast<uint32_t*>(current);
             if (instr == 0xD65F03C0) // ret instruction
                 break;
             uintptr_t next = CheckNSkipJumpARM64(current);
