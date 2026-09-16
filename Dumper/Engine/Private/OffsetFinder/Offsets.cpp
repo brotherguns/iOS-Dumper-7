@@ -62,6 +62,14 @@ void Off::InSDK::ProcessEvent::InitPE(const int32 Index, const char* const Modul
 /* UWorld */
 void Off::InSDK::World::InitGWorld()
 {
+	/* If a caller (e.g. Generator::InitEngineCore with a fixed offset) already
+	 * set GWorld, keep it instead of scanning. */
+	if (Off::InSDK::World::GWorld != 0x0)
+	{
+		LogSuccess("InitGWorld: keeping preset offset 0x%X", Off::InSDK::World::GWorld);
+		return;
+	}
+
 	LogInfo("InitGWorld: searching for UWorld** GWorld via in-process scan...");
 
 	UEClass UWorld = ObjectArray::FindClassFast("World");

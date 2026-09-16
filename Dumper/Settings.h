@@ -16,10 +16,38 @@
  *   - the emitted SDK's `using TCHAR = ...;` alias,
  *   - the emitted STATIC_NAME_IMPL literal prefix (L"..." vs u"...").
  */
-#define UEVERSION 417
+#define UEVERSION 422
 
-inline std::string GameName = "PUBGMGL";
-inline std::string GameVersion = "3.6";
+inline std::string GameName = "Fortnite";
+inline std::string GameVersion = "iOS";
+
+/*------------------------------------------------------------------------------
+ * Fortnite (iOS) offsets — from binary base (UE 4.22).
+ *
+ *     GNames                            0x4C660E0
+ *     GObjects                          0x73DC440
+ *     GWorld                            0x5451658
+ *     ProcessEvent                      0x203B278
+ *     StaticLoadObject                  0x371B5A8
+ *     SpawnActorFTrans                  0x3B9D3B8
+ *     InitGameState                     0x0CE1B4C
+ *     BeginPlay                         0x3C8940C
+ *     CallFunctionByNameWithArguments   0x23C95A4
+ *
+ * Consumed by Generator::InitEngineCore() + the UEOffsets.hpp emitter.
+ *----------------------------------------------------------------------------*/
+namespace FortniteData
+{
+	constexpr uintptr_t GNames                 = 0x4C660E0;
+	constexpr uintptr_t GObjects               = 0x73DC440;
+	constexpr uintptr_t GWorld                 = 0x5451658;
+	constexpr uintptr_t ProcessEvent           = 0x203B278;
+	constexpr uintptr_t StaticLoadObject       = 0x371B5A8;
+	constexpr uintptr_t SpawnActorFTrans       = 0x3B9D3B8;
+	constexpr uintptr_t InitGameState          = 0x0CE1B4C;
+	constexpr uintptr_t BeginPlay              = 0x3C8940C;
+	constexpr uintptr_t CallFunctionByNameWithArguments = 0x23C95A4;
+}
 #if UEVERSION >= 421
 
     #define TEXT(x) u##x
@@ -83,9 +111,10 @@ namespace Settings
 
 	namespace Generator
 	{
-		/* Auto generated if no override is provided */
-		inline std::string GameName = "";
-		inline std::string GameVersion = "";
+		/* Folder/artifact naming. Pre-filled for the Fortnite branch; only
+		 * auto-detected via KismetSystemLibrary when both are left empty. */
+		inline std::string GameName = "Fortnite";
+		inline std::string GameVersion = "iOS";
 
 		inline std::string SDKGenerationPath = getenv("HOME") ? getenv("HOME") : "";
 	}
